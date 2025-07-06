@@ -1,0 +1,130 @@
+SPECTROGRAM
+
+import os
+from pathlib import Path
+import matplotlib.pyplot as plot
+from scipy.io import wavfile
+
+os.chdir('/content/gdrive/MyDrive/DATASET_2/Class_A_chunked')
+path = Path('/content/gdrive/MyDrive/DATASET_2/Class_A_chunked').glob('**/*.wav')
+wavs = [str(wavf) for wavf in path if wavf.is_file()]
+wavs.sort()
+
+number_of_files=len(wavs)
+
+spec_ID = [wavs[i].split('/')[-1].lower() for i in range(number_of_files)]
+
+for i in range(number_of_files):
+    samplingfrequency, signaldata = wavfile.read(wavs[i])
+    pxx, freq, bins, im = plot.specgram(x=signaldata, Fs=samplingfrequency, noverlap=384, NFFT=512)
+    plot.title('spec of aud.Class_A')
+    plot.xlabel('time')
+    plot.ylabel('freq')
+    plot.savefig("spec_ID:{}.png".format(spec_ID[i]), bbox_inches='tight', dpi=100, frameon='false')
+
+
+import glob
+import os
+import shutil
+
+waveFolder= "/content/gdrive/MyDrive/DATASET_2"
+os.chdir(waveFolder)
+os.makedirs('Spectrogram_Class_A', exist_ok=True) # creating a folder named chunked
+dest_folder='/content/gdrive/MyDrive/DATASET_2/Spectrogram_Class_A'
+
+for file in glob.glob('/content/gdrive/MyDrive/DATASET_2/Class_A_chunked/*.png', recursive=True):
+    shutil.move(file, dest_folder) # move the specific files into new folder
+
+
+# Python 3 code to rename multiple # files in a directory or folder
+
+# importing os module
+import os
+
+# Function to rename multiple files
+def main():
+
+	folder = "/content/gdrive/MyDrive/DATASET_2/Spectrogram_Class_A"
+	for count, filename in enumerate(os.listdir(folder)):
+		dst = f"Class_A {str(count)}.png"
+		src =f"{folder}/{filename}" # foldername/filename, if .py file is outside folder
+		dst =f"{folder}/{dst}"
+
+		# rename() function will rename all the files
+    #src is source address of file to be renamed and dst is destination with the new name.
+		os.rename(src, dst)
+
+# Driver Code
+if __name__ == '__main__':
+
+	# Calling main() function
+	main()
+
+
+
+
+
+REGION of INTEREST (ROI)
+
+import numpy as np
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import cv2
+
+# Load the audio file
+file_path = '/content/drive/MyDrive/AUDIO_DATASET/Class_E/81__25_09_13_H3_corriente16BIT.wav_0_8.wav'  # Your audio file path
+y, sr = librosa.load(file_path, sr=None)
+
+# Compute the spectrogram
+D = np.abs(librosa.stft(y))
+D_db = librosa.amplitude_to_db(D, ref=np.max)
+
+# Define dB thresholds
+low_threshold = -40
+high_threshold = -20
+
+# Create ROI mask
+roi_mask = (D_db > low_threshold) & (D_db < high_threshold)
+
+# Find contours in mask
+roi_mask_uint8 = roi_mask.astype(np.uint8) * 255
+contours, _ = cv2.findContours(roi_mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+# Set up figure for display
+fig, ax = plt.subplots(figsize=(12, 6))
+img = librosa.display.specshow(D_db, sr=sr, x_axis='time', y_axis='hz', cmap='gray', ax=ax)
+fig.colorbar(img, ax=ax, format='%+2.0f dB')
+ax.set_title('Spectrogram with ROI (gray boxes)')
+
+# Overlay bounding boxes (convert pixel coords to time/frequency)
+for cnt in contours:
+    x, y, w, h = cv2.boundingRect(cnt)
+
+    # Convert from pixel to time/frequency
+    time_per_pixel = D_db.shape[1] / D_db.shape[1]  # librosa uses same width as D_db.shape[1]
+    freq_bins = np.linspace(0, sr // 2, D_db.shape[0])
+
+    x_start = x
+    x_end = x + w
+    y_start = y
+    y_end = y + h
+
+    t_start = librosa.frames_to_time(x_start, sr=sr)
+    t_end = librosa.frames_to_time(x_end, sr=sr)
+
+    f_start = freq_bins[y_start]
+    f_end = freq_bins[y_end]
+
+    # Draw rectangle
+    rect = plt.Rectangle((t_start, f_start), t_end - t_start, f_end - f_start,
+                         edgecolor='gray', facecolor='none', linewidth=2)
+    ax.add_patch(rect)
+
+# Save the figure
+output_path = '/content/roi_spectrogram.png'
+plt.tight_layout()
+plt.savefig(output_path, dpi=300)
+plt.close()
+
+print(f"Saved spectrogram with ROI to: {output_path}")
