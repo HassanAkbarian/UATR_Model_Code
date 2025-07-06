@@ -1,0 +1,126 @@
+#convert 32-float wav.files 2 16-int files
+
+import os
+import soundfile
+import numpy as np
+import glob
+
+path= '/content/gdrive/MyDrive/Dataset/Class E'
+
+for file in glob.glob(os.path.join(path, '*.wav')):
+
+             nameSolo = file.rsplit('.', 1)[0]
+
+             data, samplerate = soundfile.read(file)
+
+             soundfile.write(nameSolo + '16BIT.wav', data, samplerate, subtype='PCM_16')
+             print("converting " + file + "to 16 - bit")
+
+
+
+SEGMENTATION 
+
+‎#pydub has a specific method for splice an audio file(make_chunks) ‎
+‎# it simply specify the required length for the chunks/slices of  wav file  ‎
+‎#it will splice our wav file into multiple pieces ‎
+
+‎!pip install pydub
+import os
+from pydub import AudioSegment
+from pydub.utils import make_chunks
+
+def process_sudio(file_name):‎
+‎    myaudio = AudioSegment.from_file(file_name, "wav") ‎
+‎    chunk_length_ms = 8000 # pydub calculates in millisec ‎
+‎    chunks = make_chunks(myaudio,chunk_length_ms) #Make chunks of one sec ‎
+‎    for i, chunk in enumerate(chunks): ‎
+‎        chunk_name = './Class_A_chunked/' + file_name + "_{0}.wav".format(i) ‎
+‎        print ("exporting", chunk_name) ‎
+‎        chunk.export(chunk_name, format="wav") ‎
+all_file_names = os.listdir()‎
+try:‎
+‎    os.makedirs('Class_A_chunked') # creating a folder named chunked
+except:‎
+‎    pass
+for each_file in all_file_names:‎
+‎    if ('.wav' in each_file):‎
+‎        process_sudio(each_file)   ‎
+
+
+
+RESAMPLING
+
+def resample_wavs(dir_path, target_sample_rate=22050):‎
+‎  """Resample the .wav files in an input directory to given sampling rate.‎
+‎  ‎
+‎  The resampled waveforms are written to .wav files in the same directory with
+‎  file names that ends in "_22050hz.wav".‎
+
+‎  Args:‎
+‎    dir_path: Path to a directory that contains .wav files.‎
+‎    target_sapmle_rate: Target sampling rate in Hz.‎
+‎  """‎
+‎  wav_paths = glob.glob(os.path.join(dir_path, "*.wav"))‎
+‎  resampled_suffix = "_%shz.wav" % target_sample_rate
+‎  for i, wav_path in tqdm.tqdm(enumerate(wav_paths)):‎
+‎    if wav_path.endswith(resampled_suffix):‎
+‎      continue
+‎    sample_rate, xs = wavfile.read(wav_path)‎
+‎    xs = xs.astype(np.float32)‎
+‎    xs = librosa.resample(xs, sample_rate, target_sample_rate).astype(np.int16)‎
+‎    resampled_path = os.path.splitext(wav_path)[0] + resampled_suffix
+‎    wavfile.write(resampled_path, target_sample_rate, xs)‎
+
+‎#tqdm derives from the Arabic word taqaddum (‎تقدّم‎) which can mean "progress.‎
+‎!pip install tqdm ‎
+
+import glob
+from scipy.io import wavfile
+import numpy as np
+import tqdm
+import wave
+import librosa
+import os
+import shutil
+
+dir_path='/content/gdrive/MyDrive/Dataset/Class_A_chunked'‎
+target_sample_rate=22050‎
+
+resample_wavs(dir_path, target_sample_rate)‎
+
+
+
+waveFolder= "/content/gdrive/MyDrive/Dataset"‎
+os.chdir(waveFolder)‎
+os.makedirs('DS_22050_Class_A', exist_ok=True)# creating a folder named chunked
+dest_folder='/content/gdrive/MyDrive/Dataset/DS_22050_Class_A'‎
+
+for file in glob.glob('/content/gdrive/MyDrive/Dataset/Class_A_chunked/*_22050hz.wa‎v', recursive=True):‎
+‎    shutil.move(file, dest_folder) # move the specific files into new folder
+
+
+SILENT REMOVAL 
+
+#import required libraries
+
+!pip install pyAudioAnalysis
+!pip install eyed3
+!pip install pydub
+!pip install hmmlearn
+from pyAudioAnalysis import audioBasicIO as aIO
+from pyAudioAnalysis import audioSegmentation as aS
+
+# path to audio file
+path='/content/gdrive/MyDrive/TEST/30__19_07_13_practico2.wav'
+# below method returns the active / non silent segments of the audio file
+[Fs, x] = aIO.read_audio_file(path)
+segments = aS.silence_removal(x,
+                             Fs,
+                             0.020,
+                             0.020,
+                             smooth_window=1.0,
+                             weight=0.3,
+                             plot=True)
+
+
+
