@@ -1,0 +1,537 @@
+# # Creating Train / Test folders (One time use)
+import os
+import numpy as np
+import shutil
+import random
+root_dir = '/content/gdrive/MyDrive/AUDIO_DATASET/' # data root path
+classes_dir = ['Class_A', 'Class_B','Class_C','Class_D','Class_E'] #total labels
+
+test_ratio = 0.10
+
+for cls in classes_dir:
+    os.makedirs(root_dir +'train/' + cls, exist_ok=True)
+    os.makedirs(root_dir +'test/' + cls, exist_ok=True)
+
+
+    # Creating partitions of the data after shuffeling
+    src = root_dir + cls # Folder to copy images from
+
+    allFileNames = os.listdir(src)
+    np.random.shuffle(allFileNames)
+    train_FileNames, test_FileNames = np.split(np.array(allFileNames),
+                                                          [int(len(allFileNames)* (1 - (test_ratio))),
+                                                           ])
+
+
+    train_FileNames = [src+'/'+ name for name in train_FileNames.tolist()]
+    test_FileNames = [src+'/' + name for name in test_FileNames.tolist()]
+
+    print('************', cls,'************')
+    print('Total Samples: ', len(allFileNames))
+    print('Training: ', len(train_FileNames))
+    print('Testing: ', len(test_FileNames))
+    print('----------------------------------')
+
+    # Copy-pasting images
+    for name in train_FileNames:
+        shutil.copy(name, root_dir +'train/' + cls)
+
+    for name in test_FileNames:
+        shutil.copy(name, root_dir +'test/' + cls)
+
+
+************ Class_A ************
+Total Samples:  556
+Training:  503
+Testing:  53
+----------------------------------
+************ Class_B ************
+Total Samples:  682
+Training:  620
+Testing:  62
+----------------------------------
+************ Class_C ************
+Total Samples:  1358
+Training:  1232
+Testing:  126
+----------------------------------
+************ Class_D ************
+Total Samples:  693
+Training:  626
+Testing:  67
+----------------------------------
+************ Class_E ************
+Total Samples:  384
+Training:  348
+Testing:  36
+----------------------------------
+
+
+
+
+MODEL TRAINING
+
+
+import keras
+from keras.applications import vgg19
+from keras.preprocessing.image import ImageDataGenerator
+from keras.models import Sequential
+from keras.layers import Conv2D, MaxPooling2D
+from keras.layers import Activation, Dropout, Flatten, Dense
+from keras import backend as K
+from keras.callbacks import ModelCheckpoint
+from keras.regularizers import l2, l1
+from keras.models import load_model
+
+# set proper image ordering for TensorFlow
+
+batch_size = 64
+epochs=50
+
+# this is the augmentation configuration we will use for training
+train_datagen = ImageDataGenerator(
+        rescale=1./255,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
+# this is the augmentation configuration we will use for testing:
+# only rescaling
+test_datagen = ImageDataGenerator(rescale=1./255)
+
+# this is a generator that will read pictures found in
+# subfolers of 'data/train', and indefinitely generate
+# batches of augmented image data
+train_generator = train_datagen.flow_from_directory(
+        '/content/gdrive/MyDrive/Final_Dataset/train',  # this is the target directory
+        target_size=(224, 224),  # all images will be resized to 150x150
+        batch_size=batch_size,
+        class_mode='categorical')
+
+# this is a similar generator, for validation data
+validation_generator = test_datagen.flow_from_directory(
+        '/content/gdrive/MyDrive/Final_Dataset/val',
+        target_size=(224, 224),
+        batch_size=batch_size,
+        class_mode='categorical')
+
+
+vgg19 = keras.applications.vgg19
+model = vgg19.VGG19(weights='imagenet', include_top=False, input_shape=(224,224,3))
+for layer in model.layers: 
+    layer.trainable = False
+x = keras.layers.Flatten()(model.output)
+x = keras.layers.Dense(100, activation='relu')(x)
+x = keras.layers.Dense(100, activation='relu')(x)
+x = keras.layers.Dense(100, activation='relu')(x)
+predictions = keras.layers.Dense(5, activation='softmax')(x)
+model = keras.models.Model(inputs=model.input, outputs=predictions)
+
+
+model.compile(optimizer='adam',
+              loss= keras.losses.categorical_crossentropy,
+              metrics=['acc'])
+model.summar
+
+
+
+
+
+from datetime import datetime #calculates the program's execution time 
+start_time = datetime.now() # START TIME
+
+
+history = model.fit_generator(
+    train_generator, 
+    validation_data = validation_generator,
+    epochs=epochs,
+)
+
+
+end_time = datetime.now() # FINAL TIME
+print('*****************************')
+print('Duration: {}'.format(end_time - start_time))
+print('*****************************')
+
+
+
+
+MOBILENET 1D
+
+"Configurations for MobileNet in Classification Mode"
+length = example_audio.shape[1]   # Number of Features (or length of the signal)
+model_width = 64                # Number of Filter or Kernel in the Input Layer (Power of 2 to avoid error)
+num_channel = 1                 # Number of Input Channels
+problem_type = 'Classification' # Regression or Classification
+class_number = 5
+
+
+import tensorflow as tf
+
+
+def Conv_1D_block(inputs, model_width, kernel, strides):
+    # 1D Convolutional Block with BatchNormalization
+    x = tf.keras.layers.Conv1D(model_width, kernel, strides=strides, padding="same", kernel_initializer="he_normal")(inputs)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
+
+    return x
+
+
+def Conv_1D_block_2(inputs, model_width, kernel, strides, nl):
+    # This function defines a 1D convolution operation with BN and activation.
+    x = tf.keras.layers.Conv1D(model_width, kernel, strides=strides, padding="same", kernel_initializer="he_normal")(inputs)
+    x = tf.keras.layers.BatchNormalization()(x)
+    if nl == 'HS':
+        x = x * tf.keras.activations.relu(x + 3.0, max_value=6.0) / 6.0
+    elif nl == 'RE':
+        x = tf.keras.activations.relu(x, max_value=6.0)
+
+    return x
+
+
+def Conv_1D_DW(inputs, model_width, kernel, strides, alpha):
+    # 1D Depthwise Separable Convolutional Block with BatchNormalization
+    model_width = int(model_width * alpha)
+    x = tf.keras.layers.SeparableConv1D(model_width, kernel, strides=strides, depth_multiplier=1, padding='same')(inputs)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
+    x = tf.keras.layers.Conv1D(model_width, 1, strides=1, padding="same", kernel_initializer="he_normal")(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
+
+    return x
+
+
+def bottleneck_block(inputs, filters, kernel, t, alpha, s, r=False):
+    tchannel = tf.keras.backend.int_shape(inputs)[-1] * t
+    cchannel = int(filters * alpha)
+
+    x = Conv_1D_block(inputs, tchannel, 1, 1)
+    x = tf.keras.layers.SeparableConv1D(filters, kernel, strides=s, depth_multiplier=1, padding='same')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
+    x = tf.keras.layers.Conv1D(cchannel, 1, strides=1, padding='same')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('linear')(x)
+
+    if r:
+        x = tf.keras.layers.concatenate([x, inputs], axis=-1)
+
+    return x
+
+
+def bottleneck_block_2(inputs, filters, kernel, e, s, squeeze, nl, alpha):
+    # This function defines a basic bottleneck structure.
+
+    input_shape = tf.keras.backend.int_shape(inputs)
+
+    tchannel = int(e)
+    cchannel = int(alpha * filters)
+
+    r = s == 1 and input_shape[2] == filters
+
+    x = Conv_1D_block_2(inputs, tchannel, 1, 1, nl)
+
+    x = tf.keras.layers.SeparableConv1D(filters, kernel, strides=s, depth_multiplier=1, padding='same')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    if nl == 'HS':
+        x = x * tf.keras.activations.relu(x + 3.0, max_value=6.0) / 6.0
+    if nl == 'RE':
+        x = tf.keras.activations.relu(x, max_value=6.0)
+
+    if squeeze:
+        x = _squeeze(x)
+
+    x = tf.keras.layers.Conv1D(cchannel, 1, strides=1, padding='same')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+
+    if r:
+        x = tf.keras.layers.Add()([x, inputs])
+
+    return x
+
+
+def inverted_residual_block(inputs, filters, kernel, t, alpha, strides, n):
+    if strides == 1:
+        x = bottleneck_block(inputs, filters, kernel, t, alpha, strides, True)
+    else:
+        x = bottleneck_block(inputs, filters, kernel, t, alpha, strides)
+
+    for i in range(1, n):
+        x = bottleneck_block(x, filters, kernel, t, alpha, 1, True)
+
+    return x
+
+
+def _squeeze(inputs):
+    # This function defines a squeeze structure.
+
+    input_channels = int(inputs.shape[-1])
+
+    x = tf.keras.layers.GlobalAveragePooling1D()(inputs)
+    x = tf.keras.layers.Dense(input_channels, activation='relu')(x)
+    x = tf.keras.layers.Dense(input_channels, activation='hard_sigmoid')(x)
+    x = tf.keras.layers.Reshape((1, input_channels))(x)
+    x = tf.keras.layers.Multiply()([inputs, x])
+
+    return x
+
+
+class MobileNet:
+    def __init__(self, length, num_channel, num_filters, problem_type,
+                 output_nums=5, pooling='avg', dropout_rate=False, alpha=1.0):
+        self.length = length
+        self.num_channel = num_channel
+        self.num_filters = num_filters
+        self.problem_type = problem_type
+        self.output_nums = output_nums
+        self.pooling = pooling
+        self.dropout_rate = dropout_rate
+        self.alpha = alpha
+
+    def MLP(self, x):
+        if self.pooling == 'avg':
+            x = tf.keras.layers.GlobalAveragePooling1D()(x)
+        elif self.pooling == 'max':
+            x = tf.keras.layers.GlobalMaxPool1D()(x)
+        # Final Dense Outputting Layer for the outputs
+        x = tf.keras.layers.Flatten()(x)
+        if self.dropout_rate:
+            x = tf.keras.layers.Dropout(self.dropout_rate)(x)
+        outputs = tf.keras.layers.Dense(self.output_nums, activation='linear')(x)
+        if self.problem_type == 'Classification':
+            outputs = tf.keras.layers.Dense(self.output_nums, activation='softmax')(x)
+
+        return outputs
+
+    def MobileNet_v3_Small(self):
+        inputs = tf.keras.Input((self.length, self.num_channel))
+
+        x = Conv_1D_block_2(inputs, 16, 3, strides=2, nl='HS')
+        x = bottleneck_block_2(x, 16, 3, e=16, s=2, squeeze=True, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 24, 3, e=72, s=2, squeeze=False, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 24, 3, e=88, s=1, squeeze=False, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 40, 5, e=96, s=2, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 40, 5, e=240, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 40, 5, e=240, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 48, 5, e=120, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 48, 5, e=144, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 96, 5, e=288, s=2, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 96, 5, e=576, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 96, 5, e=576, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = Conv_1D_block_2(x, 576, 1, strides=1, nl='HS')
+        x = x * tf.keras.activations.relu(x + 3.0, max_value=6.0) / 6.0
+        x = tf.keras.layers.Conv1D(1280, 1, padding='same')(x)
+        
+        outputs = self.MLP(x)
+        model = tf.keras.Model(inputs, outputs)
+
+        return model
+
+    def MobileNet_v3_Large(self):
+        inputs = tf.keras.Input((self.length, self.num_channel))
+
+        x = Conv_1D_block_2(inputs, 16, 3, strides=2, nl='HS')
+        x = bottleneck_block_2(x, 16, 3, e=16, s=1, squeeze=False, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 24, 3, e=64, s=2, squeeze=False, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 24, 3, e=72, s=1, squeeze=False, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 40, 5, e=72, s=2, squeeze=True, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 40, 5, e=120, s=1, squeeze=True, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 40, 5, e=120, s=1, squeeze=True, nl='RE', alpha=self.alpha)
+        x = bottleneck_block_2(x, 80, 5, e=240, s=2, squeeze=False, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 80, 3, e=200, s=1, squeeze=False, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 80, 3, e=184, s=1, squeeze=False, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 80, 3, e=184, s=1, squeeze=False, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 112, 3, e=480, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 112, 3, e=672, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 160, 5, e=672, s=2, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 160, 5, e=960, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = bottleneck_block_2(x, 160, 5, e=960, s=1, squeeze=True, nl='HS', alpha=self.alpha)
+        x = Conv_1D_block_2(x, 960, 1, strides=1, nl='HS')
+        x = x * tf.keras.activations.relu(x + 3.0, max_value=6.0) / 6.0
+        x = tf.keras.layers.Conv1D(1280, 1, padding='same')(x)
+
+        outputs = self.MLP(x)
+        model = tf.keras.Model(inputs, outputs)
+
+        return model
+
+
+
+MOBILENET 2D
+
+from keras.models import Model
+from keras.models import Sequential
+from tensorflow.keras.layers import GlobalMaxPooling2D, Dense, Dropout
+from keras.layers import Conv2D, Activation, BatchNormalization, Flatten
+from keras.optimizers import Adam
+from tensorflow.keras.applications import MobileNetV3Small
+from keras.layers import Dense,GlobalAveragePooling2D
+from tensorflow.keras import layers
+from tensorflow.keras import models
+
+# `tf.keras.layers.Resizing`: 
+# to downsample the input to enable the model to train faster.
+# `tf.keras.layers.Normalization`: 
+# to normalize each pixel in the image based on its mean and standard deviation.
+
+input_shape = example_spectrograms.shape[1:]
+print('Input shape:', input_shape)
+num_labels = len(label_names)
+
+# Instantiate the `tf.keras.layers.Normalization` layer.
+norm_layer = layers.Normalization()
+# Fit the state of the layer to the spectrograms
+# with `Normalization.adapt`.
+norm_layer.adapt(data=train_spectrogram_ds.map(map_func=lambda spec, label: spec))
+
+
+IMG_SHAPE = (124, 129, 3)
+
+# Create the base model from the pre-trained MobileNet V2
+base_model = tf.keras.applications.MobileNetV3Small(input_shape=IMG_SHAPE,
+                                              include_top=False, 
+                                              weights='imagenet')
+base_model.trainable = True
+
+model = tf.keras.Sequential([
+  base_model,
+  tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation='relu'),
+  tf.keras.layers.Dropout(0.2),
+  tf.keras.layers.GlobalAveragePooling2D(),
+  tf.keras.layers.Dense(units=5, activation='softmax')
+])
+
+
+model.compile(optimizer=tf.keras.optimizers.Adam(), 
+              loss='categorical_crossentropy', 
+              metrics=['accuracy'])
+
+model.summary()
+ayer.nam
+
+# Fitting the model with train and validation augmented datasets.
+
+from datetime import datetime #calculates the program's execution time 
+start_time = datetime.now() # START TIME
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(),
+    loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    metrics=['accuracy'],
+)
+
+
+history = model.fit(
+    train_spectrogram_ds,
+    validation_data=val_spectrogram_ds,
+    epochs=50,
+    
+)
+
+end_time = datetime.now() # FINAL TIME
+print('*****************************')
+print('Duration: {}'.format(end_time - start_time))
+print('*****************************')
+
+metrics = history.history
+plt.figure(figsize=(16,6))
+plt.subplot(1,2,1)
+plt.plot(history.epoch, metrics['loss'], metrics['val_loss'])
+plt.legend(['loss', 'val_loss'])
+plt.ylim([0, max(plt.ylim())])
+plt.xlabel('Epoch')
+plt.ylabel('Loss [CrossEntropy]')
+
+plt.subplot(1,2,2)
+plt.plot(history.epoch, 100*np.array(metrics['accuracy']), 100*np.array(metrics['val_accuracy']))
+plt.legend(['accuracy', 'val_accuracy'])
+plt.ylim([0, 100])
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy [%]')
+
+
+
+CONFUSION MATRIX 
+
+import seaborn as sns
+
+y_pred = model.predict(test_spectrogram_ds)
+y_pred = tf.argmax(y_pred, axis=1)
+y_true = tf.concat(list(test_ds.map(lambda s,lab: lab)), axis=0)
+
+confusion_mtx = tf.math.confusion_matrix(y_true, y_pred)
+plt.figure(figsize=(10, 8))
+sns.heatmap(confusion_mtx,
+            xticklabels=label_names,
+            yticklabels=label_names,
+            annot=True, fmt='g')
+plt.xlabel('Prediction')
+plt.ylabel('Label')
+plt.show()
+
+
+ROC CURVE
+
+# Plots the Probability Distributions and the ROC Curves One vs One
+# roc curve for classes
+
+import sklearn.metrics as metrics
+
+fpr = {}
+tpr = {}
+thresh ={}
+
+predictions = model.predict(test_spectrogram_ds, 50)
+
+n_class = 5
+probs = predictions[:, 1]
+
+for i in range(n_class):    
+    fpr[i], tpr[i], thresh[i] = metrics.roc_curve(y_true, predictions[:,i], pos_label=i)
+    
+# plotting    
+plt.plot(fpr[0], tpr[0], linestyle='--',color='orange', label='Class A vs Rest')
+plt.plot(fpr[1], tpr[1], linestyle='--',color='green', label='Class B vs Rest')
+plt.plot(fpr[2], tpr[2], linestyle='--',color='blue', label='Class C vs Rest')
+plt.plot(fpr[3], tpr[3], linestyle='--',color='red', label='Class D vs Rest')
+plt.plot(fpr[4], tpr[4], linestyle='--',color='black', label='Class E vs Rest')
+
+plt.plot([0, 1], [0, 1], 'k--', lw=2)
+plt.title('Multiclass ROC curve')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive rate')
+plt.legend(loc='best')
+plt.savefig('Multiclass ROC',dpi=300);  
+
+
+CNN
+
+# build a sequential model (2 Layers Convolution)
+model = Sequential()
+
+# Step 1 - Convolution
+model.add(Conv2D(32, (3, 3), input_shape=input_shape))
+model.add(Activation('relu'))
+# Step 2 - Pooling
+model.add(MaxPooling2D(pool_size=(2, 2)))
+# Adding a second convolutional layer
+model.add(Conv2D(32, (3, 3)))
+model.add(Activation('relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+# Step 3 - Flattening (ANN block)
+model.add(Flatten())
+# Step 4 - Full connection
+model.add(Dense(512))
+model.add(Activation('relu'))
+model.add(Dropout(0.5))
+# Step 5 - softmax (output layer)
+model.add(Dense(5))
+model.add(Activation('softmax'))
+# Compiling the CNN
+model.compile(loss='categorical_crossentropy',
+              optimizer='adam',
+              metrics=['accuracy'])
+model.summary()
+
+
